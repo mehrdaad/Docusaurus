@@ -7,6 +7,12 @@
 
 import {OptionsSchema, DEFAULT_OPTIONS} from '../options';
 import {normalizePluginOptions} from '@docusaurus/utils-validation';
+import {DefaultSidebarItemsGenerator} from '../sidebarItemsGenerator';
+import {
+  DefaultNumberPrefixParser,
+  DisabledNumberPrefixParser,
+} from '../numberPrefix';
+import {GlobExcludeDefault} from '@docusaurus/utils';
 
 // the type of remark/rehype plugins is function
 const markdownPluginsFunctionStub = () => {};
@@ -25,17 +31,33 @@ describe('normalizeDocsPluginOptions', () => {
       routeBasePath: 'my-docs', // URL Route.
       homePageId: 'home', // Document id for docs home page.
       include: ['**/*.{md,mdx}'], // Extensions to include.
+      exclude: GlobExcludeDefault,
       sidebarPath: 'my-sidebar', // Path to sidebar configuration for showing a list of markdown pages.
+      sidebarItemsGenerator: DefaultSidebarItemsGenerator,
+      numberPrefixParser: DefaultNumberPrefixParser,
       docLayoutComponent: '@theme/DocPage',
       docItemComponent: '@theme/DocItem',
       remarkPlugins: [markdownPluginsObjectStub],
       rehypePlugins: [markdownPluginsFunctionStub],
+      beforeDefaultRehypePlugins: [],
+      beforeDefaultRemarkPlugins: [],
       showLastUpdateTime: true,
       showLastUpdateAuthor: true,
       admonitions: {},
-      excludeNextVersionDocs: true,
       includeCurrentVersion: false,
       disableVersioning: true,
+      editCurrentVersion: true,
+      editLocalizedFiles: true,
+      versions: {
+        current: {
+          path: 'next',
+          label: 'next',
+        },
+        version1: {
+          path: 'hello',
+          label: 'world',
+        },
+      },
     };
     const {value, error} = await OptionsSchema.validate(userOptions);
     expect(value).toEqual(userOptions);
@@ -45,6 +67,8 @@ describe('normalizeDocsPluginOptions', () => {
   test('should accept correctly defined remark and rehype plugin options', async () => {
     const userOptions = {
       ...DEFAULT_OPTIONS,
+      beforeDefaultRemarkPlugins: [],
+      beforeDefaultRehypePlugins: [markdownPluginsFunctionStub],
       remarkPlugins: [[markdownPluginsFunctionStub, {option1: '42'}]],
       rehypePlugins: [
         markdownPluginsObjectStub,
@@ -54,6 +78,67 @@ describe('normalizeDocsPluginOptions', () => {
     const {value, error} = await OptionsSchema.validate(userOptions);
     expect(value).toEqual(userOptions);
     expect(error).toBe(undefined);
+  });
+
+  test('should accept admonitions false', async () => {
+    const admonitionsFalse = {
+      ...DEFAULT_OPTIONS,
+      admonitions: false,
+    };
+    const {value, error} = OptionsSchema.validate(admonitionsFalse);
+    expect(value).toEqual(admonitionsFalse);
+    expect(error).toBe(undefined);
+  });
+
+  test('should accept numberPrefixParser function', () => {
+    function customNumberPrefixParser() {}
+    expect(
+      normalizePluginOptions(OptionsSchema, {
+        ...DEFAULT_OPTIONS,
+        numberPrefixParser: customNumberPrefixParser,
+      }),
+    ).toEqual({
+      ...DEFAULT_OPTIONS,
+      id: 'default',
+      numberPrefixParser: customNumberPrefixParser,
+    });
+  });
+
+  test('should accept numberPrefixParser false', () => {
+    expect(
+      normalizePluginOptions(OptionsSchema, {
+        ...DEFAULT_OPTIONS,
+        numberPrefixParser: false,
+      }),
+    ).toEqual({
+      ...DEFAULT_OPTIONS,
+      id: 'default',
+      numberPrefixParser: DisabledNumberPrefixParser,
+    });
+  });
+
+  test('should accept numberPrefixParser true', () => {
+    expect(
+      normalizePluginOptions(OptionsSchema, {
+        ...DEFAULT_OPTIONS,
+        numberPrefixParser: true,
+      }),
+    ).toEqual({
+      ...DEFAULT_OPTIONS,
+      id: 'default',
+      numberPrefixParser: DefaultNumberPrefixParser,
+    });
+  });
+
+  test('should reject admonitions true', async () => {
+    const admonitionsTrue = {
+      ...DEFAULT_OPTIONS,
+      admonitions: true,
+    };
+    const {error} = OptionsSchema.validate(admonitionsTrue);
+    expect(error).toMatchInlineSnapshot(
+      `[ValidationError: "admonitions" contains an invalid value]`,
+    );
   });
 
   test('should reject invalid remark plugin options', () => {
@@ -115,6 +200,34 @@ describe('normalizeDocsPluginOptions', () => {
       });
     }).toThrowErrorMatchingInlineSnapshot(
       `"\\"remarkPlugins\\" must be an array"`,
+    );
+  });
+
+  test('should reject bad lastVersion', () => {
+    expect(() => {
+      normalizePluginOptions(OptionsSchema, {
+        lastVersion: false,
+      });
+    }).toThrowErrorMatchingInlineSnapshot(
+      `"\\"lastVersion\\" must be a string"`,
+    );
+  });
+
+  test('should reject bad versions', () => {
+    expect(() => {
+      normalizePluginOptions(OptionsSchema, {
+        versions: {
+          current: {
+            hey: 3,
+          },
+          version1: {
+            path: 'hello',
+            label: 'world',
+          },
+        },
+      });
+    }).toThrowErrorMatchingInlineSnapshot(
+      `"\\"versions.current.hey\\" is not allowed"`,
     );
   });
 });
